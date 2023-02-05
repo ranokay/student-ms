@@ -7,7 +7,7 @@ namespace StudentMS.Forms;
 
 public partial class Login : Form
 {
-	private DataAccess.DataAccess _dataAccess = new();
+	private readonly DataAccess.DataAccess _dataAccess = new();
 
 	private string? _signInPassword;
 	private string? _signInUsername;
@@ -25,9 +25,6 @@ public partial class Login : Form
 	{
 		// close the application when the form is closed
 		FormClosing += (_, _) => Application.Exit();
-
-		// Initialize the firebase database
-		_dataAccess = new DataAccess.DataAccess();
 	}
 
 	private void SignInBtnRedir_Click(object sender, EventArgs e)
@@ -83,14 +80,6 @@ public partial class Login : Form
 		if (usernameExists != null)
 		{
 			ErrorMsgSignUp.Text = @"Username already exists!";
-			return;
-		}
-
-		// Check if the name is already taken
-		var nameExists = getTeacher?.Name;
-		if (nameExists != null)
-		{
-			ErrorMsgSignUp.Text = @"Teacher with this name already exists!";
 			return;
 		}
 

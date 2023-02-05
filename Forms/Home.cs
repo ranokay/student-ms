@@ -10,18 +10,15 @@ public partial class Home : Form
 {
 	private readonly DataAccess.DataAccess _dataAccess = new();
 
-	private readonly string? _teacherId =
-		JsonConvert.DeserializeObject<Teacher>(File.ReadAllText("user.json"))?.Id;
+	private readonly string? _teacherId = JsonConvert.DeserializeObject<Teacher>(File.ReadAllText("user.json"))?.Id;
 
 	private readonly string? _teacherUsername =
 		JsonConvert.DeserializeObject<Teacher>(File.ReadAllText("user.json"))?.Username;
 
 	private string? _addStudentClass;
-
 	private string? _addStudentCourse;
 	private string? _addStudentGrade;
 	private string? _addStudentName;
-
 	private string? _updateConfirmPassword;
 	private string? _updateName;
 	private string? _updatePassword;
@@ -36,13 +33,7 @@ public partial class Home : Form
 	{
 		// close the application when the form is closed
 		FormClosed += (_, _) => Application.Exit();
-		ActiveControl = null;
-
-		var getTeacher = await _dataAccess.GetTeacher(_teacherId);
-		HomeUserLabel.Text = getTeacher?.Name;
-
-		var teacherExists = await _dataAccess.GetTeacher(_teacherId);
-		if (teacherExists == null) HomeUserLabel.Text += @" (Offline)";
+		HomeUserLabel.Text = _teacherUsername;
 
 		// show the students
 		if (HomeTabControl.SelectedTab == StudentsListPage)
@@ -72,8 +63,7 @@ public partial class Home : Form
 		_addStudentGrade = AddStudentGrade.Text.Trim();
 		_addStudentClass = AddStudentClass.Text.ToLower().Trim();
 
-		// Clear the error message
-		ErrorMsgAddStudent.Text = string.Empty;
+		var getStudent = await _dataAccess.GetStudent(_addStudentName, _teacherId);
 
 		// Check all the required fields
 		var allFieldsMessage = FieldsValidation.CheckAllFields(_addStudentName, _addStudentCourse, _addStudentGrade);
@@ -84,7 +74,7 @@ public partial class Home : Form
 		}
 
 		// Check if student already exists
-		var studentExists = await _dataAccess.GetStudent(_addStudentName, _teacherId);
+		var studentExists = getStudent?.Name;
 		if (studentExists != null)
 		{
 			ErrorMsgAddStudent.Text = @"Student already exists";
@@ -132,14 +122,8 @@ public partial class Home : Form
 		var student = new Student(studentName, studentClass, studentCourse, _addStudentGrade);
 
 		// Add the student to the database
-		try
-		{
-			await _dataAccess.AddStudent(student, _teacherId);
-		}
-		catch (Exception exception)
-		{
-			MessageBox.Show(exception.Message);
-		}
+
+		await _dataAccess.AddStudent(_teacherId, student);
 
 		// Show success message
 		FieldsValidation.SuccessMsg(ErrorMsgAddStudent, "Student added successfully");
@@ -147,7 +131,8 @@ public partial class Home : Form
 		ActiveControl = null;
 
 		// Clear the fields
-		FieldsValidation.ClearFields(AddStudentName, AddStudentClass, AddStudentCourse, AddStudentGrade);
+		FieldsValidation.ClearFields(AddStudentName, AddStudentClass, AddStudentCourse, AddStudentGrade,
+			ErrorMsgAddStudent);
 
 		// Refresh the students list
 		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherId);
@@ -165,8 +150,6 @@ public partial class Home : Form
 	{
 		// Check if the clicked cell is a button, Must be non-negative and less than the size of the collection.
 		if (e.RowIndex < 0 || e.ColumnIndex < 0 || e.ColumnIndex > StudentsGridView.Columns.Count - 1) return;
-
-		// Check if the clicked cell is a button
 		if (StudentsGridView.Columns[e.ColumnIndex] is not DataGridViewButtonColumn) return;
 
 		switch (e.ColumnIndex)
@@ -177,7 +160,7 @@ public partial class Home : Form
 				var studentName = StudentsGridView.Rows[e.RowIndex].Cells[0].Value.ToString();
 
 				// Delete the student
-				await _dataAccess.DeleteStudent(studentName, _teacherId);
+				await _dataAccess.DeleteStudent(studentName, _teacherUsername);
 
 				// Refresh the list view
 				StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherId);
@@ -251,7 +234,7 @@ public partial class Home : Form
 		_updatePassword = NewTeacherPassword.Text;
 		_updateConfirmPassword = ConfirmNewTeacherPassword.Text;
 
-		var getTeacher = await _dataAccess.GetTeacher(_teacherId);
+		var getTeacher = await _dataAccess.GetTeacherByUsername(_teacherUsername);
 
 		if (string.IsNullOrEmpty(_updateName) && string.IsNullOrEmpty(_updateUsername) &&
 		    string.IsNullOrEmpty(_updatePassword) && string.IsNullOrEmpty(_updateConfirmPassword))
@@ -270,14 +253,13 @@ public partial class Home : Form
 				return;
 			}
 
-			var teacherName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(_updateName);
-
-			if (getTeacher != null)
+			if (getTeacher?.Name == _updateName)
 			{
-				getTeacher.Name = teacherName;
-
-				await _dataAccess.UpdateTeacher(getTeacher, _teacherId);
+				ErrorMsgUpdateTeacher.Text = @"Name already taken!";
+				return;
 			}
+
+			if (getTeacher != null) getTeacher.Name = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(_updateName);
 		}
 
 		// Username validation
@@ -290,19 +272,13 @@ public partial class Home : Form
 				return;
 			}
 
-			var checkUsername = getTeacher?.Username;
-			if (checkUsername != null)
+			if (getTeacher?.Username == _updateUsername)
 			{
 				ErrorMsgUpdateTeacher.Text = @"Username already taken!";
 				return;
 			}
 
-			if (getTeacher != null)
-			{
-				getTeacher.Username = _updateUsername;
-
-				await _dataAccess.UpdateTeacher(getTeacher, _teacherId);
-			}
+			if (getTeacher != null) getTeacher.Username = _updateUsername;
 		}
 
 		// Password validation
@@ -315,29 +291,21 @@ public partial class Home : Form
 				return;
 			}
 
-			// Confirm password
 			if (_updatePassword != _updateConfirmPassword)
 			{
 				ErrorMsgUpdateTeacher.Text = @"Passwords do not match!";
 				return;
 			}
 
-			var hashedNewPassword = BCrypt.Net.BCrypt.HashPassword(_updatePassword);
-
 			if (getTeacher != null)
 			{
+				var hashedNewPassword = BCrypt.Net.BCrypt.HashPassword(_updatePassword);
 				getTeacher.Password = hashedNewPassword;
-
-				await _dataAccess.UpdateTeacher(getTeacher, _teacherId);
 			}
 		}
 
-		/*if (getTeacher != null)
+		if (getTeacher != null)
 		{
-			getTeacher.Name = teacherName;
-			getTeacher.Username = teacherUsername;
-			getTeacher.Password = hashedNewPassword;
-
 			await _dataAccess.UpdateTeacher(getTeacher, _teacherId);
 
 			File.Delete("user.json");
@@ -346,7 +314,7 @@ public partial class Home : Form
 			await File.WriteAllTextAsync("user.json", json);
 
 			HomeUserLabel.Text = getTeacher.Name;
-		}*/
+		}
 
 		// Hide the edit teacher panel
 		EditTeacherBtn.Visible = true;
@@ -391,8 +359,12 @@ public partial class Home : Form
 
 	private async void ConfirmDeletionBtn_Click(object sender, EventArgs e)
 	{
-		// Get the teacher password
-		var getTeacher = await _dataAccess.GetTeacher(_teacherId);
+		var teacherUsername = JsonConvert.DeserializeObject<Teacher>(await File.ReadAllTextAsync("user.json"))?.Username;
+		var teacherId = JsonConvert.DeserializeObject<Teacher>(await File.ReadAllTextAsync("user.json"))?.Id;
+
+		// Get the teacher
+		var getTeacher = await _dataAccess.GetTeacherByUsername(teacherUsername);
+
 		// Check if the password is correct
 		if (!BCrypt.Net.BCrypt.Verify(ConfirmDeletionPassword.Text, getTeacher?.Password))
 		{
@@ -401,7 +373,7 @@ public partial class Home : Form
 		}
 
 		// Delete the teacher
-		await _dataAccess.DeleteTeacher(_teacherId);
+		await _dataAccess.DeleteTeacher(teacherId);
 
 		// Show the login form
 		var loginForm = new Login();
