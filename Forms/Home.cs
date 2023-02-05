@@ -308,10 +308,7 @@ public partial class Home : Form
 			return;
 		}
 
-		// Hash the password
 		var hashedNewPassword = BCrypt.Net.BCrypt.HashPassword(_updatePassword);
-
-		// Name to title case
 		var teacherName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(_updateName);
 
 		// Get the teacher
