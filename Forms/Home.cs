@@ -2,7 +2,6 @@
 using Newtonsoft.Json;
 using StudentMS.Controllers;
 using StudentMS.Models;
-using Timer = System.Windows.Forms.Timer;
 
 namespace StudentMS.Forms;
 
@@ -44,19 +43,10 @@ public partial class Home : Form
 		var teacherExists = await _dataAccess.GetTeacher(_teacherUsername);
 		if (teacherExists == null) HomeUserLabel.Text += @" (Offline)";
 
-		// show the students in the list view and refresh the list view every 5 seconds
+		// show the students
 		if (HomeTabControl.SelectedTab != StudentsListPage) return;
-		{
-			StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
 
-			// refresh the list view every 5 seconds
-			var timer = new Timer { Interval = 5000 };
-			timer.Tick += async (_, _) =>
-			{
-				StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
-			};
-			timer.Start();
-		}
+		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
 	}
 
 	private void LogoutBtn_Click(object sender, EventArgs e)
@@ -158,6 +148,9 @@ public partial class Home : Form
 
 		// Clear the fields
 		FieldsValidation.ClearFields(AddStudentName, AddStudentClass, AddStudentCourse, AddStudentGrade);
+
+		// Refresh the students list
+		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
 	}
 
 	// Add student on enter key press
@@ -261,44 +254,55 @@ public partial class Home : Form
 		// Clear the error message
 		ErrorMsgUpdateTeacher.Text = string.Empty;
 
-		// Check if all fields are empty
-		if (_updateName.Length == 0 && _updateUsername.Length == 0 && _updatePassword.Length == 0 &&
-		    _updateConfirmPassword.Length == 0)
+		switch (_updateName.Length)
 		{
-			ErrorMsgUpdateTeacher.Text = @"Please fill at least one field!";
-			return;
-		}
+			// Check if all fields are empty
+			case 0 when _updateUsername.Length == 0 && _updatePassword.Length == 0 &&
+			            _updateConfirmPassword.Length == 0:
+				ErrorMsgUpdateTeacher.Text = @"Please fill at least one field!";
+				return;
+			// Name validation
+			case > 0:
+			{
+				var nameMsg = FieldsValidation.CheckName(_updateName);
+				if (nameMsg != null)
+				{
+					ErrorMsgUpdateTeacher.Text = nameMsg;
+					return;
+				}
 
-		// Name validation
-		var nameMsg = FieldsValidation.CheckName(_updateName);
-		if (_updateName.Length != 0 && nameMsg != null)
-		{
-			ErrorMsgUpdateTeacher.Text = nameMsg;
-			return;
+				break;
+			}
 		}
 
 		// Username validation
-		var usernameMsg = FieldsValidation.CheckUsername(_updateUsername);
-		if (_updateUsername.Length != 0 && usernameMsg != null)
+		if (_updateUsername.Length > 0)
 		{
-			ErrorMsgUpdateTeacher.Text = usernameMsg;
-			return;
+			var usernameMsg = FieldsValidation.CheckUsername(_updateUsername);
+			if (usernameMsg != null)
+			{
+				ErrorMsgUpdateTeacher.Text = usernameMsg;
+				return;
+			}
 		}
 
 		// Check if the username is already taken
-		var teacherUsername = await _dataAccess.GetTeacher(_updateUsername);
-		if (teacherUsername != null)
+		var checkUsername = await _dataAccess.GetTeacher(_updateUsername);
+		if (checkUsername != null)
 		{
 			ErrorMsgUpdateTeacher.Text = @"Username already taken!";
 			return;
 		}
 
 		// Password validation
-		var passwordMsg = FieldsValidation.CheckPassword(_updatePassword);
-		if (_updatePassword.Length != 0 && passwordMsg != null)
+		if (_updatePassword.Length > 0)
 		{
-			ErrorMsgUpdateTeacher.Text = passwordMsg;
-			return;
+			var passwordMsg = FieldsValidation.CheckPassword(_updatePassword);
+			if (passwordMsg != null)
+			{
+				ErrorMsgUpdateTeacher.Text = passwordMsg;
+				return;
+			}
 		}
 
 		// Confirm password
@@ -314,16 +318,14 @@ public partial class Home : Form
 		// Get the teacher
 		var teacher = await _dataAccess.GetTeacher(_teacherUsername);
 
-		// Update the teacher
-		if (teacher != null)
-		{
-			teacher.Name = teacherName;
-			teacher.Username = _updateUsername;
-			teacher.Password = hashedNewPassword;
+		// Update only if it changed
+		if (teacher == null) return;
+		if (_updateName.Length > 0) teacher.Name = teacherName;
+		if (_updateUsername.Length > 0) teacher.Username = _updateUsername;
+		if (_updatePassword.Length > 0) teacher.Password = hashedNewPassword;
 
-			// Update the teacher
-			await _dataAccess.UpdateTeacher(_teacherUsername, teacher);
-		}
+		// Update the teacher
+		await _dataAccess.UpdateTeacher(_teacherUsername, teacher);
 
 		EditTeacherBtn.Visible = true;
 		EditTeacherPanel.Visible = false;
@@ -335,6 +337,9 @@ public partial class Home : Form
 		// Empty the fields
 		FieldsValidation.ClearFields(NewTeacherName, NewTeacherUsername, NewTeacherPassword,
 			ConfirmNewTeacherPassword);
+
+		// Refresh the list view
+		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
 	}
 
 	private void CancelUpdateBtn_Click(object sender, EventArgs e)
@@ -379,6 +384,9 @@ public partial class Home : Form
 			// Show the error message
 			ConfirmDeletionErrorMsg.Text = @"Incorrect password!";
 		}
+
+		// Clear the password field
+		ConfirmDeletionPassword.Text = string.Empty;
 	}
 
 	private void CancelDeletionBtn_Click(object sender, EventArgs e)

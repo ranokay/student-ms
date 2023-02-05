@@ -164,10 +164,10 @@ public partial class Login : Form
 			return;
 		}
 
-		// Create user.json file to store the user data for the current session
-		var user = new Teacher(teacher.Name, teacher.Username, teacher.Password);
-		var json = JsonConvert.SerializeObject(user);
-		await File.WriteAllTextAsync("user.json", json);
+		// Create a new session
+		var session = new Session(teacher.Name, teacher.Username);
+		var json = JsonConvert.SerializeObject(session);
+		await File.WriteAllTextAsync("session.json", json);
 
 		// Open the home form
 		var home = new Home();

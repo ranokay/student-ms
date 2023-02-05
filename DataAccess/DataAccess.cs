@@ -37,7 +37,7 @@ public class DataAccess
 	}
 
 	// get the teacher's key
-	private async Task<string?> GetTeacherKey(string? username)
+	public async Task<string?> GetTeacherKey(string? username)
 	{
 		try
 		{

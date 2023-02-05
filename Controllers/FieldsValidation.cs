@@ -73,7 +73,7 @@ internal abstract class FieldsValidation
 		// hide the label after 3 seconds
 		var timer = new Timer { Interval = 3000 };
 
-		timer.Tick += (sender, args) =>
+		timer.Tick += (_, _) =>
 		{
 			label.Text = "";
 			timer.Stop();
