@@ -8,8 +8,8 @@ namespace StudentMS.Forms;
 public partial class Login : Form
 {
 	private DataAccess.DataAccess _dataAccess = new();
-	private string? _signInPassword;
 
+	private string? _signInPassword;
 	private string? _signInUsername;
 	private string? _signUpConfirmPassword;
 	private string? _signUpName;
@@ -34,16 +34,14 @@ public partial class Login : Form
 	{
 		LoginTabControl.SelectTab("SignInPage");
 		ActiveControl = null;
-		ErrorMsgSignIn.Text = "";
+		FieldsValidation.ClearFields(SignInUsername, SignInPassword);
 	}
 
 	private void SignUpBtnRedir_Click(object sender, EventArgs e)
 	{
 		LoginTabControl.SelectTab("SignUpPage");
 		ActiveControl = null;
-		ErrorMsgSignUp.Text = "";
-		SignInUsername.Text = "";
-		SignInPassword.Text = "";
+		FieldsValidation.ClearFields(SignUpName, SignUpUsername, SignUpPassword, SignUpConfirmPassword);
 	}
 
 	private async void SignUpBtn_Click(object? sender, EventArgs e)
@@ -52,6 +50,8 @@ public partial class Login : Form
 		_signUpUsername = SignUpUsername.Text.ToLower().Trim();
 		_signUpPassword = SignUpPassword.Text;
 		_signUpConfirmPassword = SignUpConfirmPassword.Text;
+
+		var getTeacher = await _dataAccess.GetTeacherByUsername(_signUpUsername);
 
 		// Check all the required fields
 		var allFieldsMessage =
@@ -79,7 +79,7 @@ public partial class Login : Form
 		}
 
 		// Check if the username is already taken
-		var usernameExists = await _dataAccess.GetTeacher(_signUpUsername);
+		var usernameExists = getTeacher?.Username;
 		if (usernameExists != null)
 		{
 			ErrorMsgSignUp.Text = @"Username already exists!";
@@ -87,7 +87,7 @@ public partial class Login : Form
 		}
 
 		// Check if the name is already taken
-		var nameExists = await _dataAccess.GetTeacher(_signUpName);
+		var nameExists = getTeacher?.Name;
 		if (nameExists != null)
 		{
 			ErrorMsgSignUp.Text = @"Teacher with this name already exists!";
@@ -112,21 +112,13 @@ public partial class Login : Form
 		// Hash the password
 		var hashedPassword = BCrypt.Net.BCrypt.HashPassword(_signUpPassword);
 
-		// Name to title case
 		var teacherName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(_signUpName);
 
 		// Create a new teacher for the firebase database
-		var newTeacher = new Teacher(teacherName, _signUpUsername, hashedPassword);
+		var teacherId = Guid.NewGuid().ToString();
+		var newTeacher = new Teacher(teacherId, teacherName, _signUpUsername, hashedPassword);
 
-		// Push the teacher to database
-		try
-		{
-			await _dataAccess.AddTeacher(newTeacher);
-		}
-		catch (Exception ex)
-		{
-			MessageBox.Show(ex.Message);
-		}
+		await _dataAccess.AddTeacher(newTeacher);
 
 		LoginTabControl.SelectTab("SignInPage");
 		FieldsValidation.SuccessMsg(ErrorMsgSignIn, "Account created successfully!");
@@ -141,6 +133,8 @@ public partial class Login : Form
 		_signInUsername = SignInUsername.Text.ToLower().Trim();
 		_signInPassword = SignInPassword.Text;
 
+		var getTeacher = await _dataAccess.GetTeacherByUsername(_signInUsername);
+
 		// Check if the user has entered all the required fields
 		var allFieldsMessage = FieldsValidation.CheckAllFields(_signInUsername, _signInPassword);
 		if (allFieldsMessage != null)
@@ -150,24 +144,27 @@ public partial class Login : Form
 		}
 
 		// Check if the username exists
-		var teacher = await _dataAccess.GetTeacher(_signInUsername);
-		if (teacher == null)
+		var teacherUsername = getTeacher?.Username;
+		if (teacherUsername == null)
 		{
 			ErrorMsgSignIn.Text = @"Username does not exist!";
 			return;
 		}
 
 		// Check if the password is correct
-		if (!BCrypt.Net.BCrypt.Verify(_signInPassword, teacher.Password))
+		if (!BCrypt.Net.BCrypt.Verify(_signInPassword, getTeacher?.Password))
 		{
 			ErrorMsgSignIn.Text = @"Incorrect password!";
 			return;
 		}
 
+		// Get teacher's id
+		var teacherId = getTeacher?.Id;
+
 		// Create a new session
-		var session = new Session(teacher.Name, teacher.Username);
+		var session = new Teacher(teacherId, getTeacher?.Name, getTeacher?.Username, getTeacher?.Password);
 		var json = JsonConvert.SerializeObject(session);
-		await File.WriteAllTextAsync("session.json", json);
+		await File.WriteAllTextAsync("user.json", json);
 
 		// Open the home form
 		var home = new Home();
@@ -175,7 +172,6 @@ public partial class Login : Form
 		Hide();
 	}
 
-	// Login on enter key press
 	private void Enter_KeyDown(object sender, KeyEventArgs e)
 	{
 		// Pressed enter key and remove sound

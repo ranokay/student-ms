@@ -29,94 +29,96 @@ public class DataAccess
 		await _firebase.Child("teachers").PostAsync(JsonConvert.SerializeObject(teacher));
 	}
 
+	// get the teacher's key
+	private async Task<string?> GetTeacherKey(string? id)
+	{
+		var teachers = await _firebase.Child("teachers").OnceAsync<Teacher>();
+		return (from teacher in teachers where teacher.Object.Id == id select teacher.Key).FirstOrDefault();
+	}
+
+	// get teacher by id
+	public async Task<Teacher?> GetTeacher(string? id)
+	{
+		var teacherKey = await GetTeacherKey(id);
+		var teachers = await _firebase.Child("teachers").OnceAsync<Teacher>();
+		return (from teacher in teachers where teacher.Key == teacherKey select teacher.Object).FirstOrDefault();
+	}
+
 	// get teacher by username
-	public async Task<Teacher?> GetTeacher(string? username)
+	public async Task<Teacher?> GetTeacherByUsername(string? username)
 	{
 		var teachers = await _firebase.Child("teachers").OnceAsync<Teacher>();
 		return (from teacher in teachers where teacher.Object.Username == username select teacher.Object).FirstOrDefault();
 	}
 
-	// get the teacher's key
-	public async Task<string?> GetTeacherKey(string? username)
-	{
-		try
-		{
-			var teachers = await _firebase.Child("teachers").OnceAsync<Teacher>();
-			return (from teacher in teachers where teacher.Object.Username == username select teacher.Key).FirstOrDefault();
-		}
-
-		catch (Exception)
-		{
-			return null;
-		}
-	}
-
 	// update teacher
-	public async Task UpdateTeacher(string? username, Teacher teacher)
+	public async Task UpdateTeacher(Teacher teacher, string? id)
 	{
-		var teacherKey = await GetTeacherKey(username);
+		var teacherKey = await GetTeacherKey(id);
 		await _firebase.Child("teachers").Child(teacherKey).PutAsync(JsonConvert.SerializeObject(teacher));
 	}
 
 	// delete teacher
-	public async Task DeleteTeacher(string? username)
+	public async Task DeleteTeacher(string? id)
 	{
-		var teacherKey = await GetTeacherKey(username);
+		var teacherKey = await GetTeacherKey(id);
 		await _firebase.Child("teachers").Child(teacherKey).DeleteAsync();
 	}
 
 	// add student
-	public async Task AddStudent(Student student, string? username)
+	public async Task AddStudent(Student student, string? teacherId)
 	{
-		var teacherKey = await GetTeacherKey(username);
+		var teacherKey = await GetTeacherKey(teacherId);
 		await _firebase.Child("teachers").Child(teacherKey).Child("students")
 			.PostAsync(JsonConvert.SerializeObject(student));
 	}
 
 	// get all students
-	public async Task<List<Student>> GetAllStudents(string? username)
+	public async Task<List<Student>> GetAllStudents(string? teacherId)
 	{
-		var teacherKey = await GetTeacherKey(username);
 		try
 		{
+			var teacherKey = await GetTeacherKey(teacherId);
 			var students = await _firebase.Child("teachers").Child(teacherKey).Child("students").OnceAsync<Student>();
 			return students.Select(student => student.Object).ToList();
 		}
-		catch (Exception)
+		catch (Exception e)
 		{
-			return new List<Student>();
+			Console.WriteLine(e);
+			throw;
 		}
 	}
 
 	// get student by name
-	public async Task<Student?> GetStudent(string? name, string? username)
+	public async Task<Student?> GetStudent(string? name, string? teacherId)
 	{
-		var teacherKey = await GetTeacherKey(username);
+		var teacherKey = await GetTeacherKey(teacherId);
+
 		var students = await _firebase.Child("teachers").Child(teacherKey).Child("students").OnceAsync<Student>();
 		return (from student in students where student.Object.Name == name select student.Object).FirstOrDefault();
 	}
 
 	// get student's key
-	private async Task<string?> GetStudentKey(string? name, string? username)
+	private async Task<string?> GetStudentKey(string? name, string? teacherId)
 	{
-		var teacherKey = await GetTeacherKey(username);
+		var teacherKey = await GetTeacherKey(teacherId);
 		var students = await _firebase.Child("teachers").Child(teacherKey).Child("students").OnceAsync<Student>();
 		return (from student in students where student.Object.Name == name select student.Key).FirstOrDefault();
 	}
 
 	// delete student
-	public async Task DeleteStudent(string? name, string? username)
+	public async Task DeleteStudent(string? name, string? teacherId)
 	{
-		var teacherKey = await GetTeacherKey(username);
-		var studentKey = await GetStudentKey(name, username);
+		var teacherKey = await GetTeacherKey(teacherId);
+		var studentKey = await GetStudentKey(name, teacherId);
 		await _firebase.Child("teachers").Child(teacherKey).Child("students").Child(studentKey).DeleteAsync();
 	}
 
 	// update student
-	public async Task UpdateStudent(string? name, string? username, Student student)
+	public async Task UpdateStudent(string? name, string? teacherId, Student student)
 	{
-		var teacherKey = await GetTeacherKey(username);
-		var studentKey = await GetStudentKey(name, username);
+		var teacherKey = await GetTeacherKey(teacherId);
+		var studentKey = await GetStudentKey(name, teacherId);
 		await _firebase.Child("teachers").Child(teacherKey).Child("students").Child(studentKey)
 			.PutAsync(JsonConvert.SerializeObject(student));
 	}

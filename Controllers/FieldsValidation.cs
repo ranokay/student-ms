@@ -94,6 +94,9 @@ internal abstract class FieldsValidation
 				case ComboBox comboBox:
 					comboBox.SelectedIndex = -1;
 					break;
+				case Label label:
+					label.Text = "";
+					break;
 			}
 	}
 

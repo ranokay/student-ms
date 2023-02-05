@@ -10,6 +10,9 @@ public partial class Home : Form
 {
 	private readonly DataAccess.DataAccess _dataAccess = new();
 
+	private readonly string? _teacherId =
+		JsonConvert.DeserializeObject<Teacher>(File.ReadAllText("user.json"))?.Id;
+
 	private readonly string? _teacherUsername =
 		JsonConvert.DeserializeObject<Teacher>(File.ReadAllText("user.json"))?.Username;
 
@@ -18,9 +21,6 @@ public partial class Home : Form
 	private string? _addStudentCourse;
 	private string? _addStudentGrade;
 	private string? _addStudentName;
-
-	private string? _teacherName =
-		JsonConvert.DeserializeObject<Teacher>(File.ReadAllText("user.json"))?.Name;
 
 	private string? _updateConfirmPassword;
 	private string? _updateName;
@@ -38,15 +38,15 @@ public partial class Home : Form
 		FormClosed += (_, _) => Application.Exit();
 		ActiveControl = null;
 
-		HomeUserLabel.Text = _teacherName;
+		var getTeacher = await _dataAccess.GetTeacher(_teacherId);
+		HomeUserLabel.Text = getTeacher?.Name;
 
-		var teacherExists = await _dataAccess.GetTeacher(_teacherUsername);
+		var teacherExists = await _dataAccess.GetTeacher(_teacherId);
 		if (teacherExists == null) HomeUserLabel.Text += @" (Offline)";
 
 		// show the students
-		if (HomeTabControl.SelectedTab != StudentsListPage) return;
-
-		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
+		if (HomeTabControl.SelectedTab == StudentsListPage)
+			StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherId);
 	}
 
 	private void LogoutBtn_Click(object sender, EventArgs e)
@@ -84,7 +84,7 @@ public partial class Home : Form
 		}
 
 		// Check if student already exists
-		var studentExists = await _dataAccess.GetStudent(_addStudentName, _teacherUsername);
+		var studentExists = await _dataAccess.GetStudent(_addStudentName, _teacherId);
 		if (studentExists != null)
 		{
 			ErrorMsgAddStudent.Text = @"Student already exists";
@@ -134,7 +134,7 @@ public partial class Home : Form
 		// Add the student to the database
 		try
 		{
-			await _dataAccess.AddStudent(student, _teacherUsername);
+			await _dataAccess.AddStudent(student, _teacherId);
 		}
 		catch (Exception exception)
 		{
@@ -150,10 +150,9 @@ public partial class Home : Form
 		FieldsValidation.ClearFields(AddStudentName, AddStudentClass, AddStudentCourse, AddStudentGrade);
 
 		// Refresh the students list
-		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
+		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherId);
 	}
 
-	// Add student on enter key press
 	private void Enter_KeyDown(object sender, KeyEventArgs e)
 	{
 		// Pressed enter key and remove sound
@@ -162,7 +161,6 @@ public partial class Home : Form
 		AddNewStudentBtn.PerformClick();
 	}
 
-	// Update student
 	private async void StudentsGridView_CellContentClick(object sender, DataGridViewCellEventArgs e)
 	{
 		// Check if the clicked cell is a button, Must be non-negative and less than the size of the collection.
@@ -179,10 +177,10 @@ public partial class Home : Form
 				var studentName = StudentsGridView.Rows[e.RowIndex].Cells[0].Value.ToString();
 
 				// Delete the student
-				await _dataAccess.DeleteStudent(studentName, _teacherUsername);
+				await _dataAccess.DeleteStudent(studentName, _teacherId);
 
 				// Refresh the list view
-				StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
+				StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherId);
 				break;
 			}
 			// Get the edit button
@@ -201,7 +199,7 @@ public partial class Home : Form
 				{
 					// Get the student name
 					var studentName = StudentsGridView.Rows[e.RowIndex].Cells[0].Value.ToString();
-					var student = await _dataAccess.GetStudent(studentName, _teacherUsername);
+					var student = await _dataAccess.GetStudent(studentName, _teacherId);
 
 					if (student != null)
 					{
@@ -216,7 +214,7 @@ public partial class Home : Form
 						student.Course = StudentsGridView.Rows[e.RowIndex].Cells[2].Value.ToString();
 						student.Grade = StudentsGridView.Rows[e.RowIndex].Cells[3].Value.ToString();
 
-						await _dataAccess.UpdateStudent(studentName, _teacherUsername, student);
+						await _dataAccess.UpdateStudent(studentName, _teacherId, student);
 					}
 
 					for (var i = 0; i < 4; i++) StudentsGridView.Rows[e.RowIndex].Cells[i].ReadOnly = true;
@@ -224,7 +222,7 @@ public partial class Home : Form
 					StudentsGridView.Rows[e.RowIndex].Cells[4].Value = "✏️";
 
 					// Refresh the list view
-					StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
+					StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherId);
 				};
 				break;
 			}
@@ -240,6 +238,10 @@ public partial class Home : Form
 		EditTeacherBtn.Visible = false;
 
 		ActiveControl = null;
+
+		// Clear the fields
+		FieldsValidation.ClearFields(NewTeacherName, NewTeacherUsername, NewTeacherPassword,
+			ConfirmNewTeacherPassword, ErrorMsgUpdateTeacher);
 	}
 
 	private async void SaveNewTeacherBtn_Click(object sender, EventArgs e)
@@ -249,34 +251,37 @@ public partial class Home : Form
 		_updatePassword = NewTeacherPassword.Text;
 		_updateConfirmPassword = ConfirmNewTeacherPassword.Text;
 
-		ActiveControl = null;
+		var getTeacher = await _dataAccess.GetTeacher(_teacherId);
 
-		// Clear the error message
-		ErrorMsgUpdateTeacher.Text = string.Empty;
-
-		switch (_updateName.Length)
+		if (string.IsNullOrEmpty(_updateName) && string.IsNullOrEmpty(_updateUsername) &&
+		    string.IsNullOrEmpty(_updatePassword) && string.IsNullOrEmpty(_updateConfirmPassword))
 		{
-			// Check if all fields are empty
-			case 0 when _updateUsername.Length == 0 && _updatePassword.Length == 0 &&
-			            _updateConfirmPassword.Length == 0:
-				ErrorMsgUpdateTeacher.Text = @"Please fill at least one field!";
-				return;
-			// Name validation
-			case > 0:
-			{
-				var nameMsg = FieldsValidation.CheckName(_updateName);
-				if (nameMsg != null)
-				{
-					ErrorMsgUpdateTeacher.Text = nameMsg;
-					return;
-				}
+			ErrorMsgUpdateTeacher.Text = @"Please fill at least one field!";
+			return;
+		}
 
-				break;
+		// Name validation
+		if (!string.IsNullOrEmpty(_updateName))
+		{
+			var nameMsg = FieldsValidation.CheckName(_updateName);
+			if (nameMsg != null)
+			{
+				ErrorMsgUpdateTeacher.Text = nameMsg;
+				return;
+			}
+
+			var teacherName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(_updateName);
+
+			if (getTeacher != null)
+			{
+				getTeacher.Name = teacherName;
+
+				await _dataAccess.UpdateTeacher(getTeacher, _teacherId);
 			}
 		}
 
 		// Username validation
-		if (_updateUsername.Length > 0)
+		if (!string.IsNullOrEmpty(_updateUsername))
 		{
 			var usernameMsg = FieldsValidation.CheckUsername(_updateUsername);
 			if (usernameMsg != null)
@@ -284,18 +289,24 @@ public partial class Home : Form
 				ErrorMsgUpdateTeacher.Text = usernameMsg;
 				return;
 			}
-		}
 
-		// Check if the username is already taken
-		var checkUsername = await _dataAccess.GetTeacher(_updateUsername);
-		if (checkUsername != null)
-		{
-			ErrorMsgUpdateTeacher.Text = @"Username already taken!";
-			return;
+			var checkUsername = getTeacher?.Username;
+			if (checkUsername != null)
+			{
+				ErrorMsgUpdateTeacher.Text = @"Username already taken!";
+				return;
+			}
+
+			if (getTeacher != null)
+			{
+				getTeacher.Username = _updateUsername;
+
+				await _dataAccess.UpdateTeacher(getTeacher, _teacherId);
+			}
 		}
 
 		// Password validation
-		if (_updatePassword.Length > 0)
+		if (!string.IsNullOrEmpty(_updatePassword))
 		{
 			var passwordMsg = FieldsValidation.CheckPassword(_updatePassword);
 			if (passwordMsg != null)
@@ -303,43 +314,56 @@ public partial class Home : Form
 				ErrorMsgUpdateTeacher.Text = passwordMsg;
 				return;
 			}
+
+			// Confirm password
+			if (_updatePassword != _updateConfirmPassword)
+			{
+				ErrorMsgUpdateTeacher.Text = @"Passwords do not match!";
+				return;
+			}
+
+			var hashedNewPassword = BCrypt.Net.BCrypt.HashPassword(_updatePassword);
+
+			if (getTeacher != null)
+			{
+				getTeacher.Password = hashedNewPassword;
+
+				await _dataAccess.UpdateTeacher(getTeacher, _teacherId);
+			}
 		}
 
-		// Confirm password
-		if (_updatePassword != _updateConfirmPassword && _updatePassword.Length > 0 && _updateConfirmPassword.Length > 0)
+		/*if (getTeacher != null)
 		{
-			ErrorMsgUpdateTeacher.Text = @"Passwords do not match!";
-			return;
-		}
+			getTeacher.Name = teacherName;
+			getTeacher.Username = teacherUsername;
+			getTeacher.Password = hashedNewPassword;
 
-		var hashedNewPassword = BCrypt.Net.BCrypt.HashPassword(_updatePassword);
-		var teacherName = CultureInfo.CurrentCulture.TextInfo.ToTitleCase(_updateName);
+			await _dataAccess.UpdateTeacher(getTeacher, _teacherId);
 
-		// Get the teacher
-		var teacher = await _dataAccess.GetTeacher(_teacherUsername);
+			File.Delete("user.json");
+			var user = new Teacher(_teacherId, getTeacher.Name, getTeacher.Username, getTeacher.Password);
+			var json = JsonConvert.SerializeObject(user, Formatting.Indented);
+			await File.WriteAllTextAsync("user.json", json);
 
-		// Update only if it changed
-		if (teacher == null) return;
-		if (_updateName.Length > 0) teacher.Name = teacherName;
-		if (_updateUsername.Length > 0) teacher.Username = _updateUsername;
-		if (_updatePassword.Length > 0) teacher.Password = hashedNewPassword;
+			HomeUserLabel.Text = getTeacher.Name;
+		}*/
 
-		// Update the teacher
-		await _dataAccess.UpdateTeacher(_teacherUsername, teacher);
-
+		// Hide the edit teacher panel
 		EditTeacherBtn.Visible = true;
 		EditTeacherPanel.Visible = false;
 
-		// Refresh the teacher name
-		_teacherName = teacherName;
-		HomeUserLabel.Text = _teacherName;
-
-		// Empty the fields
-		FieldsValidation.ClearFields(NewTeacherName, NewTeacherUsername, NewTeacherPassword,
-			ConfirmNewTeacherPassword);
-
 		// Refresh the list view
-		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherUsername);
+		StudentsGridView.DataSource = await _dataAccess.GetAllStudents(_teacherId);
+
+		ActiveControl = null;
+
+		// Show the success message
+		MessageBox.Show(@"Profile updated successfully!", @"Success", MessageBoxButtons.OK,
+			MessageBoxIcon.Information);
+
+		// Clear the fields
+		FieldsValidation.ClearFields(NewTeacherName, NewTeacherUsername, NewTeacherPassword,
+			ConfirmNewTeacherPassword, ErrorMsgUpdateTeacher);
 	}
 
 	private void CancelUpdateBtn_Click(object sender, EventArgs e)
@@ -360,33 +384,35 @@ public partial class Home : Form
 		ConfirmDeletionPanel.Visible = true;
 
 		ActiveControl = null;
+
+		// Clear the fields
+		FieldsValidation.ClearFields(ConfirmDeletionPassword, ConfirmDeletionErrorMsg);
 	}
 
 	private async void ConfirmDeletionBtn_Click(object sender, EventArgs e)
 	{
 		// Get the teacher password
-		var teacher = await _dataAccess.GetTeacher(_teacherUsername);
+		var getTeacher = await _dataAccess.GetTeacher(_teacherId);
 		// Check if the password is correct
-		if (BCrypt.Net.BCrypt.Verify(ConfirmDeletionPassword.Text, teacher?.Password))
+		if (!BCrypt.Net.BCrypt.Verify(ConfirmDeletionPassword.Text, getTeacher?.Password))
 		{
-			// Delete the teacher
-			await _dataAccess.DeleteTeacher(_teacherUsername);
-
-			// Show the login form
-			var loginForm = new Login();
-			loginForm.Show();
-
-			// Hide the home form
-			Hide();
-		}
-		else
-		{
-			// Show the error message
 			ConfirmDeletionErrorMsg.Text = @"Incorrect password!";
+			return;
 		}
 
-		// Clear the password field
-		ConfirmDeletionPassword.Text = string.Empty;
+		// Delete the teacher
+		await _dataAccess.DeleteTeacher(_teacherId);
+
+		// Show the login form
+		var loginForm = new Login();
+		loginForm.Show();
+		Hide();
+
+		// Delete the user.json file
+		File.Delete("user.json");
+
+		// Clear the fields
+		FieldsValidation.ClearFields(ConfirmDeletionPassword, ConfirmDeletionErrorMsg);
 	}
 
 	private void CancelDeletionBtn_Click(object sender, EventArgs e)
@@ -396,11 +422,5 @@ public partial class Home : Form
 
 		// Show the edit panel
 		EditTeacherPanel.Visible = true;
-
-		// Clear the password field
-		ConfirmDeletionPassword.Text = string.Empty;
-
-		// Clear the error message
-		ConfirmDeletionErrorMsg.Text = string.Empty;
 	}
 }
